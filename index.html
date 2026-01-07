@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>教師點名紀錄系統</title>
+    <!-- iOS PWA 設定 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="點名小幫手">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Noto+Sans+TC', sans-serif;
+            background-color: #fef9f3;
+            color: #4a4a4a;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        .macaron-blue { background-color: #def3f6; }
+        .macaron-pink { background-color: #fce4ec; }
+        .macaron-yellow { background-color: #fff9c4; }
+        .macaron-green { background-color: #e8f5e9; }
+        .macaron-purple { background-color: #f3e5f5; }
+
+        .student-box {
+            transition: all 0.2s ease;
+            cursor: pointer;
+            font-size: 1.25rem;
+            font-weight: bold;
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 1.2rem;
+            border: 4px solid transparent;
+            user-select: none;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .student-box.present {
+            background-color: #c8e6c9; 
+            color: #2e7d32;
+            border-color: #a5d6a7;
+        }
+
+        .student-box.absent {
+            background-color: #ffcdd2; 
+            color: #c62828;
+            border-color: #ef9a9a;
+        }
+
+        .header-input {
+            font-size: 1.1rem;
+            padding: 0.6rem 1rem;
+            border-radius: 0.75rem;
+            border: 2px solid #e0e0e0;
+            background-color: white;
+            width: 100%;
+            appearance: none;
+        }
+
+        .btn-action {
+            padding: 0.8rem 1rem;
+            border-radius: 1rem;
+            font-weight: bold;
+            font-size: 1rem;
+            transition: transform 0.1s, opacity 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-action:active {
+            transform: scale(0.95);
+            opacity: 0.8;
+        }
+
+        /* 儲存提示動畫 */
+        #saveIndicator {
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
+
+        @media (min-width: 768px) {
+            .student-box { font-size: 1.5rem; }
+            .btn-action { font-size: 1.1rem; }
+        }
+    </style>
+</head>
+<body class="p-3 md:p-8 pb-20">
+    <div class="max-w-5xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden relative">
+        
+        <!-- 自動儲存提示 -->
+        <div id="saveIndicator" class="absolute top-2 right-4 text-xs text-gray-400 opacity-0">已自動儲存於本機</div>
+
+        <!-- 頂部資訊區 -->
+        <div class="macaron-blue p-4 md:p-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="col-span-1">
+                <label class="block font-bold mb-1 text-sm text-blue-700">日期</label>
+                <input type="date" id="date" class="header-input" onchange="saveSettings()">
+            </div>
+            <div class="col-span-1">
+                <label class="block font-bold mb-1 text-sm text-blue-700">節次</label>
+                <select id="period" class="header-input" onchange="saveSettings()">
+                    <option>第一節</option>
+                    <option>第二節</option>
+                    <option>第三節</option>
+                    <option>第四節</option>
+                    <option>第五節</option>
+                    <option>第六節</option>
+                    <option>第七節</option>
+                    <option>第八節</option>
+                </select>
+            </div>
+            <div class="col-span-1">
+                <label class="block font-bold mb-1 text-sm text-blue-700">科目</label>
+                <input type="text" id="subject" placeholder="科目" class="header-input" oninput="saveSettings()">
+            </div>
+            <div class="col-span-1">
+                <label class="block font-bold mb-1 text-sm text-blue-700">教師</label>
+                <input type="text" id="teacher" placeholder="老師" class="header-input" oninput="saveSettings()">
+            </div>
+        </div>
+
+        <!-- 設定區 -->
+        <details id="settingsPanel" class="p-4 border-b border-gray-100 macaron-yellow bg-opacity-30">
+            <summary class="font-bold cursor-pointer text-gray-600">設定與 CSV 匯入 (點擊展開)</summary>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 items-end mt-4">
+                <div>
+                    <label class="block font-bold mb-1 text-sm">座號起點</label>
+                    <input type="number" id="startNo" value="1" class="header-input">
+                </div>
+                <div>
+                    <label class="block font-bold mb-1 text-sm">座號終點</label>
+                    <input type="number" id="endNo" value="40" class="header-input">
+                </div>
+                <div class="col-span-2 md:col-span-1">
+                    <label class="block font-bold mb-1 text-sm">排除座號 (逗號隔開)</label>
+                    <input type="text" id="excludeNo" placeholder="如: 5, 12" class="header-input">
+                </div>
+                <button onclick="handleManualGenerate()" class="btn-action bg-blue-400 text-white w-full shadow-md">更新名單</button>
+            </div>
+            
+            <div class="mt-4 p-3 bg-white bg-opacity-50 rounded-xl border border-yellow-200">
+                <label class="block font-bold mb-1 text-sm">匯入 CSV (格式: 座號,姓名)</label>
+                <div class="flex gap-2">
+                    <input type="file" id="csvFile" accept=".csv" class="block w-full text-sm">
+                    <button onclick="importCSV()" class="btn-action macaron-purple text-purple-800 text-sm whitespace-nowrap">確認匯入</button>
+                </div>
+            </div>
+        </details>
+
+        <!-- 點名網格區 -->
+        <div class="p-4 min-h-[350px]">
+            <div id="studentGrid" class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+                <!-- 由 JavaScript 產生 -->
+            </div>
+        </div>
+
+        <!-- 統計與操作區 -->
+        <div class="macaron-green p-4 md:p-6 text-center border-t border-green-100">
+            <div id="statsResult" class="mb-4 p-4 bg-white bg-opacity-80 rounded-2xl shadow-inner">
+                <p class="font-bold text-gray-400 text-xs tracking-widest mb-1 uppercase">Attendance Stats</p>
+                <div class="flex justify-around items-center">
+                    <div class="text-center">
+                        <div class="text-xs text-gray-400">缺席座號</div>
+                        <div id="absentList" class="text-xl font-black text-red-500">無</div>
+                    </div>
+                    <div class="w-px h-10 bg-gray-100"></div>
+                    <div class="text-center">
+                        <div class="text-xs text-gray-400">出席人數</div>
+                        <div id="attendanceCount" class="text-xl font-black text-green-600">0 / 0</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row justify-center gap-3">
+                <button onclick="resetAttendance()" class="btn-action bg-gray-200 text-gray-600 flex-1">
+                    重設點名
+                </button>
+                <button onclick="downloadResult()" class="btn-action bg-green-500 text-white shadow-lg flex-1">
+                    下載點名表 (CSV)
+                </button>
+            </div>
+            <button onclick="clearAllData()" class="mt-4 text-xs text-gray-400 underline">清除所有儲存紀錄</button>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY_STUDENTS = 'attendance_app_students';
+        const STORAGE_KEY_SETTINGS = 'attendance_app_settings';
+        
+        let students = [];
+
+        window.onload = () => {
+            loadAllData();
+        };
+
+        // --- 儲存與讀取邏輯 ---
+
+        function loadAllData() {
+            const savedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
+            if (savedSettings) {
+                const config = JSON.parse(savedSettings);
+                document.getElementById('date').value = config.date || new Date().toISOString().split('T')[0];
+                document.getElementById('period').value = config.period || '第一節';
+                document.getElementById('subject').value = config.subject || '';
+                document.getElementById('teacher').value = config.teacher || '';
+                document.getElementById('startNo').value = config.startNo || 1;
+                document.getElementById('endNo').value = config.endNo || 40;
+                document.getElementById('excludeNo').value = config.excludeNo || '';
+            } else {
+                document.getElementById('date').valueAsDate = new Date();
+            }
+
+            const savedStudents = localStorage.getItem(STORAGE_KEY_STUDENTS);
+            if (savedStudents) {
+                students = JSON.parse(savedStudents);
+                renderGrid(false);
+            } else {
+                generateGrid();
+            }
+        }
+
+        function saveSettings() {
+            const config = {
+                date: document.getElementById('date').value,
+                period: document.getElementById('period').value,
+                subject: document.getElementById('subject').value,
+                teacher: document.getElementById('teacher').value,
+                startNo: document.getElementById('startNo').value,
+                endNo: document.getElementById('endNo').value,
+                excludeNo: document.getElementById('excludeNo').value
+            };
+            localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(config));
+            showSaveIndicator();
+        }
+
+        function saveStudentData() {
+            localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(students));
+            showSaveIndicator();
+        }
+
+        function showSaveIndicator() {
+            const el = document.getElementById('saveIndicator');
+            el.style.opacity = '1';
+            setTimeout(() => { el.style.opacity = '0'; }, 1000);
+        }
+
+        // --- 功能邏輯 ---
+
+        function handleManualGenerate() {
+            if(confirm("更新名單會覆蓋目前的點名紀錄，確定嗎？")) {
+                generateGrid();
+                saveSettings();
+            }
+        }
+
+        function generateGrid() {
+            const start = parseInt(document.getElementById('startNo').value) || 1;
+            const end = parseInt(document.getElementById('endNo').value) || 1;
+            const excludeInput = document.getElementById('excludeNo').value;
+            
+            // 修正排除座號邏輯：將字串轉為數字陣列
+            const exclude = excludeInput.split(',')
+                            .map(n => n.trim())
+                            .filter(n => n !== "")
+                            .map(n => parseInt(n));
+
+            students = [];
+            for (let i = start; i <= end; i++) {
+                // 如果座號不在排除清單中，才加入學生名單
+                if (!exclude.includes(i)) {
+                    students.push({ id: i, name: i, status: 'present' });
+                }
+            }
+            renderGrid();
+        }
+
+        function renderGrid(shouldSave = true) {
+            const grid = document.getElementById('studentGrid');
+            grid.innerHTML = '';
+
+            students.forEach((student, index) => {
+                const box = document.createElement('div');
+                box.className = `student-box ${student.status}`;
+                box.innerHTML = `<span>${student.name}</span>`;
+                box.onclick = (e) => {
+                    e.preventDefault();
+                    toggleStatus(index);
+                };
+                grid.appendChild(box);
+            });
+            updateStats();
+            if(shouldSave) saveStudentData();
+        }
+
+        function toggleStatus(index) {
+            students[index].status = students[index].status === 'present' ? 'absent' : 'present';
+            renderGrid();
+        }
+
+        function updateStats() {
+            const total = students.length;
+            const present = students.filter(s => s.status === 'present').length;
+            const absent = students.filter(s => s.status === 'absent').map(s => s.id);
+
+            document.getElementById('attendanceCount').innerText = `${present} / ${total}`;
+            document.getElementById('absentList').innerText = absent.length > 0 ? absent.sort((a,b)=>a-b).join(', ') : '無';
+        }
+
+        function resetAttendance() {
+            if(confirm("確定要重設目前所有的點名狀態（改為全部出席）嗎？")) {
+                students.forEach(s => s.status = 'present');
+                renderGrid();
+            }
+        }
+
+        function clearAllData() {
+            if(confirm("這將會清除所有儲存的名單設定與紀錄，恢復到初始狀態，確定嗎？")) {
+                localStorage.removeItem(STORAGE_KEY_SETTINGS);
+                localStorage.removeItem(STORAGE_KEY_STUDENTS);
+                location.reload();
+            }
+        }
+
+        function importCSV() {
+            const fileInput = document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const rows = text.split(/\r?\n/);
+                const newStudents = [];
+                
+                rows.forEach(row => {
+                    const cols = row.split(',');
+                    if (cols.length >= 2) {
+                        const id = parseInt(cols[0].trim());
+                        const name = cols[1].trim();
+                        if (!isNaN(id) && name) {
+                            newStudents.push({ id, name, status: 'present' });
+                        }
+                    }
+                });
+
+                if (newStudents.length > 0) {
+                    students = newStudents;
+                    renderGrid();
+                    saveSettings();
+                    document.getElementById('settingsPanel').open = false;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function downloadResult() {
+            const date = document.getElementById('date').value;
+            const period = document.getElementById('period').value;
+            const subject = document.getElementById('subject').value || '未命名';
+            const teacher = document.getElementById('teacher').value || '未名';
+
+            let csvContent = `日期,${date}\n節次,${period}\n科目,${subject}\n教師,${teacher}\n\n`;
+            csvContent += "座號,姓名,狀態\n";
+            students.forEach(s => {
+                csvContent += `${s.id},${s.name},${s.status === 'present' ? '出席' : '缺席'}\n`;
+            });
+
+            const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `點名紀錄_${date}_${subject}.csv`;
+            link.click();
+        }
+    </script>
+</body>
+</html>
